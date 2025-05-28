@@ -1,15 +1,16 @@
-
 import React, { useState } from 'react';
 import { Power, PowerOff, Server, Activity } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
 
 const Dashboard = () => {
   const [vmStatus, setVmStatus] = useState<'running' | 'stopped'>('stopped');
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const toggleVM = async () => {
     setIsLoading(true);
@@ -28,6 +29,7 @@ const Dashboard = () => {
       });
 
       if (response.ok) {
+        const data = await response.json();
         const newStatus = vmStatus === 'running' ? 'stopped' : 'running';
         setVmStatus(newStatus);
         
@@ -37,6 +39,12 @@ const Dashboard = () => {
         });
         
         console.log(`VM successfully ${action}ed`);
+        
+        // If VM was started and URL is returned, redirect to VM page
+        if (action === 'start' && data.url) {
+          console.log('Redirecting to VM page with URL:', data.url);
+          navigate('/vm', { state: { vmUrl: data.url } });
+        }
       } else {
         throw new Error(`Failed to ${action} VM`);
       }
