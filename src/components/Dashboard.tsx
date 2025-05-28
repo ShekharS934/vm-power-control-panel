@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { Power, PowerOff, Server, Activity } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,9 +9,53 @@ import { useNavigate } from 'react-router-dom';
 
 const Dashboard = () => {
   const [vmStatus, setVmStatus] = useState<'running' | 'stopped'>('stopped');
+  const [vmUrl, setVmUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(true);
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  // Check VM status on component mount
+  useEffect(() => {
+    checkVMStatus();
+  }, []);
+
+  const checkVMStatus = async () => {
+    try {
+      console.log('Checking VM status...');
+      const response = await fetch('/api/vm/status', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('VM status response:', data);
+        
+        if (data.status === 'running') {
+          setVmStatus('running');
+          if (data.url) {
+            setVmUrl(data.url);
+          }
+        } else {
+          setVmStatus('stopped');
+          setVmUrl(null);
+        }
+      } else {
+        console.log('Failed to get VM status, assuming stopped');
+        setVmStatus('stopped');
+        setVmUrl(null);
+      }
+    } catch (error) {
+      console.error('Error checking VM status:', error);
+      setVmStatus('stopped');
+      setVmUrl(null);
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
 
   const toggleVM = async () => {
     setIsLoading(true);
@@ -32,6 +77,12 @@ const Dashboard = () => {
         const data = await response.json();
         const newStatus = vmStatus === 'running' ? 'stopped' : 'running';
         setVmStatus(newStatus);
+        
+        if (action === 'start' && data.url) {
+          setVmUrl(data.url);
+        } else if (action === 'stop') {
+          setVmUrl(null);
+        }
         
         toast({
           title: `VM ${action === 'start' ? 'Started' : 'Stopped'}`,
@@ -95,49 +146,70 @@ const Dashboard = () => {
                 className={`${getStatusColor()} text-white border-0 px-3 py-1`}
               >
                 <Activity className="h-3 w-3 mr-1" />
-                {getStatusText()}
+                {isCheckingStatus ? 'Checking...' : getStatusText()}
               </Badge>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <p className="text-sm text-slate-600">
-                  Status: <span className="font-medium">{getStatusText()}</span>
-                </p>
-                <p className="text-sm text-slate-600">
-                  Instance ID: <span className="font-mono text-xs bg-slate-100 px-2 py-1 rounded">vm-001</span>
-                </p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm text-slate-600">
+                    Status: <span className="font-medium">{isCheckingStatus ? 'Checking...' : getStatusText()}</span>
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    Instance ID: <span className="font-mono text-xs bg-slate-100 px-2 py-1 rounded">vm-001</span>
+                  </p>
+                </div>
+                
+                <Button
+                  onClick={toggleVM}
+                  disabled={isLoading || isCheckingStatus}
+                  size="lg"
+                  className={`
+                    h-12 px-6 font-medium transition-all duration-200 transform hover:scale-105
+                    ${vmStatus === 'running' 
+                      ? 'bg-red-500 hover:bg-red-600 text-white' 
+                      : 'bg-green-500 hover:bg-green-600 text-white'
+                    }
+                  `}
+                >
+                  {isLoading ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      {vmStatus === 'running' ? 'Stopping...' : 'Starting...'}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      {vmStatus === 'running' ? (
+                        <PowerOff className="h-5 w-5" />
+                      ) : (
+                        <Power className="h-5 w-5" />
+                      )}
+                      {vmStatus === 'running' ? 'Stop VM' : 'Start VM'}
+                    </div>
+                  )}
+                </Button>
               </div>
-              
-              <Button
-                onClick={toggleVM}
-                disabled={isLoading}
-                size="lg"
-                className={`
-                  h-12 px-6 font-medium transition-all duration-200 transform hover:scale-105
-                  ${vmStatus === 'running' 
-                    ? 'bg-red-500 hover:bg-red-600 text-white' 
-                    : 'bg-green-500 hover:bg-green-600 text-white'
-                  }
-                `}
-              >
-                {isLoading ? (
+
+              {/* VM Access URL */}
+              {vmUrl && vmStatus === 'running' && (
+                <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                  <p className="text-sm font-medium text-green-800 mb-2">VM Access URL:</p>
                   <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    {vmStatus === 'running' ? 'Stopping...' : 'Starting...'}
+                    <code className="flex-1 p-2 bg-white rounded border text-sm font-mono">
+                      {vmUrl}
+                    </code>
+                    <Button
+                      size="sm"
+                      onClick={() => navigate('/vm', { state: { vmUrl } })}
+                      className="flex items-center gap-2"
+                    >
+                      Access VM
+                    </Button>
                   </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    {vmStatus === 'running' ? (
-                      <PowerOff className="h-5 w-5" />
-                    ) : (
-                      <Power className="h-5 w-5" />
-                    )}
-                    {vmStatus === 'running' ? 'Stop VM' : 'Start VM'}
-                  </div>
-                )}
-              </Button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
